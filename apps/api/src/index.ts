@@ -34,7 +34,7 @@ app.get("/health", (_req, res) => {
 });
 
 // Start AI monitoring agent
-if (process.env.OPENAI_API_KEY) {
+if (AIAgentService.isConfigured()) {
   try {
     const hederaService = new HederaService();
     const aiAgent = new AIAgentService(hederaService);

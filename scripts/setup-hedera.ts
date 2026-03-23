@@ -22,7 +22,7 @@ async function main() {
   }
 
   const operatorId = AccountId.fromString(process.env.HEDERA_OPERATOR_ID);
-  const operatorKey = PrivateKey.fromString(process.env.HEDERA_OPERATOR_KEY);
+  const operatorKey = PrivateKey.fromStringECDSA(process.env.HEDERA_OPERATOR_KEY!);
 
   const client =
     process.env.HEDERA_NETWORK === "mainnet"

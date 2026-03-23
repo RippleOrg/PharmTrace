@@ -74,7 +74,7 @@ Manufacturer             Distributor              Pharmacy / Hospital         Co
 | 📜 **Immutable Audit Trail** | All custody handoffs are published to Hedera Consensus Service (HCS) — they cannot be altered or deleted after submission. |
 | 🔐 **AWS KMS Signing** | Every handoff message is signed with ECDSA_SHA_256 via AWS KMS, ensuring non-repudiation across the supply chain. |
 | 🌐 **IPFS Metadata** | Batch metadata (drug details, NDC codes, lot numbers) is stored on IPFS via Pinata, with the hash embedded in the NFT. |
-| 🤖 **AI Anomaly Detection** | An autonomous OpenAI GPT-4o agent scans every batch every 30 seconds for chain breaks, temperature excursions, expiry risk, and counterfeit indicators. |
+| 🤖 **AI Anomaly Detection** | An autonomous AI agent scans every batch every 30 seconds for chain breaks, temperature excursions, expiry risk, and counterfeit indicators, using OpenAI first and OpenRouter Gemini 2.5 Flash Lite as fallback when configured. |
 | 📱 **Public QR Verification** | Anyone can scan a QR code to instantly verify a drug's authenticity — no account, no login, no app installation required. |
 | ⛓️ **Smart Contracts** | Solidity contracts on the Hedera EVM provide on-chain batch registration and recall management. |
 | 🚨 **Alert Dashboard** | A real-time dashboard shows active anomalies with severity levels (LOW → CRITICAL) and supports manual resolution. |
@@ -106,7 +106,7 @@ Manufacturer             Distributor              Pharmacy / Hospital         Co
 └───────────┼─────────────┼────────────┼──────────────┼───────────┘
             │             │            │              │
    ┌────────▼──────┐ ┌────▼───┐ ┌─────▼──────┐ ┌───▼────────────┐
-   │    Hedera     │ │AWS KMS │ │   Pinata   │ │  OpenAI GPT-4o │
+  │    Hedera     │ │AWS KMS │ │   Pinata   │ │ OpenAI/OpenRouter │
    │  Testnet /    │ │ (Sign) │ │   (IPFS)   │ │  (Anomaly Det) │
    │  Mainnet      │ └────────┘ └────────────┘ └────────────────┘
    │  ┌──────────┐ │
@@ -138,7 +138,7 @@ Manufacturer             Distributor              Pharmacy / Hospital         Co
 | Blockchain | `@hashgraph/sdk` 2.81 (HCS + HTS) |
 | EVM | Ethers.js |
 | Cryptography | AWS SDK KMS — ECDSA_SHA_256 |
-| AI/LLM | LangChain 1.2 + OpenAI GPT-4o |
+| AI/LLM | LangChain 1.2 + OpenAI GPT-4o with OpenRouter Gemini 2.5 Flash Lite fallback |
 | Storage | Pinata IPFS |
 | Auth | JWT (`jsonwebtoken` 9.0) |
 | Validation | Zod |
@@ -188,7 +188,7 @@ PharmTrace/
 │   │   │   │   └── alerts.ts         # AI alert management
 │   │   │   ├── services/
 │   │   │   │   ├── HederaService.ts  # HCS, HTS, NFT, Mirror Node integration
-│   │   │   │   ├── AIAgentService.ts # GPT-4o anomaly detection loop
+│   │   │   │   ├── AIAgentService.ts # AI anomaly detection loop with provider fallback
 │   │   │   │   ├── KMSService.ts     # AWS KMS signing & verification
 │   │   │   │   ├── IPFSService.ts    # Pinata IPFS upload/retrieval
 │   │   │   │   └── MirrorService.ts  # Hedera Mirror Node queries
@@ -252,7 +252,7 @@ Before you begin, make sure you have the following accounts and tools set up:
 | **Hedera Account** | Free testnet account at [portal.hedera.com](https://portal.hedera.com) — you need an operator Account ID and private key |
 | **AWS Account** | An IAM user with `kms:Sign`, `kms:Verify`, `kms:CreateKey`, `kms:CreateAlias` permissions. KMS keys are created automatically at manufacturer onboarding. |
 | **Pinata Account** | Free tier at [pinata.cloud](https://pinata.cloud) — for IPFS metadata storage |
-| **OpenAI API Key** | [platform.openai.com](https://platform.openai.com) — GPT-4o access required for AI anomaly detection |
+| **OpenAI or OpenRouter API Key** | [platform.openai.com](https://platform.openai.com) or [openrouter.ai](https://openrouter.ai) — at least one provider is required for AI anomaly detection |
 
 ---
 
@@ -281,9 +281,11 @@ Open `.env` and configure every value:
 HEDERA_OPERATOR_ID=0.0.XXXXX           # Your Hedera account ID
 HEDERA_OPERATOR_KEY=302e...            # Private key (ED25519 or ECDSA, DER-encoded)
 HEDERA_NETWORK=testnet                 # "testnet" or "mainnet"
-HEDERA_SUPPLY_CHAIN_TOPIC_ID=0.0.XXXXX # Filled in by setup:hedera (step 3)
-HEDERA_ALERTS_TOPIC_ID=0.0.XXXXX       # Filled in by setup:hedera (step 3)
-HEDERA_CONTRACT_ID=0.0.XXXXX           # Optional: deployed BatchRegistry contract
+HEDERA_SUPPLY_CHAIN_TOPIC_ID=0.0.8351042
+HEDERA_ALERTS_TOPIC_ID=0.0.8351043
+HEDERA_CONTRACT_ID=0x99E649c8a79C23B949b6fEBe734980590cf7F21C
+HEDERA_BATCH_REGISTRY_ADDRESS=0x99E649c8a79C23B949b6fEBe734980590cf7F21C
+HEDERA_RECALL_MANAGER_ADDRESS=0xA5c6be9555523779AaE828848b7c87FCE957DBA4
 
 # ── AWS KMS ────────────────────────────────────────────────────────
 AWS_REGION=us-east-1
@@ -294,8 +296,14 @@ AWS_SECRET_ACCESS_KEY=...
 POSTGRES_PASSWORD=change_me_in_production
 DATABASE_URL=postgresql://pharmtrace:change_me_in_production@localhost:5432/pharmtrace
 
-# ── OpenAI ─────────────────────────────────────────────────────────
-OPENAI_API_KEY=sk-...                  # Required for AI anomaly detection
+# ── AI Providers ───────────────────────────────────────────────────
+OPENAI_API_KEY=sk-...                  # Primary provider (optional if OpenRouter is set)
+OPENAI_MODEL=gpt-4o                    # Optional override
+OPENROUTER_API_KEY=sk-or-v1-...        # Fallback provider (optional if OpenAI is set)
+OPENROUTER_MODEL=google/gemini-2.5-flash-lite
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_SITE_URL=http://localhost:3000
+OPENROUTER_APP_NAME=PharmTrace
 
 # ── Pinata IPFS ────────────────────────────────────────────────────
 PINATA_API_KEY=...
@@ -317,8 +325,8 @@ This one-time script creates the two HCS topics (supply chain + alerts) and prin
 ```bash
 npm run setup:hedera
 # Output:
-#   Supply Chain Topic: 0.0.XXXXX → set HEDERA_SUPPLY_CHAIN_TOPIC_ID
-#   Alerts Topic:       0.0.YYYYY → set HEDERA_ALERTS_TOPIC_ID
+#   Supply Chain Topic: 0.0.8351042 → set HEDERA_SUPPLY_CHAIN_TOPIC_ID
+#   Alerts Topic:       0.0.8351043 → set HEDERA_ALERTS_TOPIC_ID
 ```
 
 ### 4. Database Setup
@@ -599,15 +607,15 @@ Standalone recall state machine:
 ```bash
 # Configure HEDERA_EVM_PRIVATE_KEY in your .env first
 cd packages/contracts
-npx hardhat run scripts/deploy.ts --network hederaTestnet
+npx hardhat run scripts/deploy.ts --network hedera_testnet
 ```
 
 Network configs are defined in `hardhat.config.ts`:
 
 ```typescript
 networks: {
-  hederaTestnet: { url: "https://testnet.hashio.io/api", chainId: 296 },
-  hederaMainnet: { url: "https://mainnet.hashio.io/api", chainId: 295 },
+  hedera_testnet: { url: "https://testnet.hashio.io/api", chainId: 296 },
+  hedera_mainnet: { url: "https://mainnet.hashio.io/api", chainId: 295 },
 }
 ```
 
@@ -670,7 +678,7 @@ PharmTrace uses PostgreSQL managed through Prisma. The schema is defined in `app
 | `alertType` | `AlertType` | See enum below |
 | `severity` | `Severity` | See enum below |
 | `description` | String | Human-readable description |
-| `aiAnalysis` | String? | Raw GPT-4o analysis output |
+| `aiAnalysis` | String? | Raw AI analysis output |
 | `resolved` | Boolean | Default `false` |
 
 ### Enums

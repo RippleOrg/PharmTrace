@@ -7,14 +7,18 @@ async function main() {
 
   // Deploy BatchRegistry
   const BatchRegistry = await ethers.getContractFactory("BatchRegistry");
-  const batchRegistry = await BatchRegistry.deploy();
+  const batchRegistry = await BatchRegistry.deploy({
+    gasLimit: 4000000,
+  });
   await batchRegistry.waitForDeployment();
   const batchRegistryAddr = await batchRegistry.getAddress();
   console.log("BatchRegistry deployed to:", batchRegistryAddr);
 
   // Deploy RecallManager
   const RecallManager = await ethers.getContractFactory("RecallManager");
-  const recallManager = await RecallManager.deploy();
+  const recallManager = await RecallManager.deploy({
+    gasLimit: 4000000,
+  });
   await recallManager.waitForDeployment();
   const recallManagerAddr = await recallManager.getAddress();
   console.log("RecallManager deployed to:", recallManagerAddr);
