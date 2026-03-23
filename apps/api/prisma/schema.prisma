@@ -1,0 +1,108 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Manufacturer {
+  id              String   @id @default(cuid())
+  name            String
+  licenseNumber   String   @unique
+  hederaAccountId String
+  kmsKeyId        String
+  kmsKeyAlias     String
+  htsTokenId      String?
+  batches         Batch[]
+  createdAt       DateTime @default(now())
+}
+
+model Batch {
+  id              String       @id @default(cuid())
+  batchNumber     String       @unique
+  drugName        String
+  genericName     String
+  ndcCode         String
+  lotNumber       String
+  manufacturerId  String
+  manufacturer    Manufacturer @relation(fields: [manufacturerId], references: [id])
+  manufactureDate DateTime
+  expiryDate      DateTime
+  quantity        Int
+  strengthMg      Float
+  htsTokenId      String?
+  htsSerialNumber Int?
+  ipfsHash        String?
+  status          BatchStatus  @default(MANUFACTURED)
+  handoffs        Handoff[]
+  alerts          Alert[]
+  createdAt       DateTime     @default(now())
+}
+
+model Handoff {
+  id            String    @id @default(cuid())
+  batchId       String
+  batch         Batch     @relation(fields: [batchId], references: [id])
+  fromParty     String
+  fromPartyType PartyType
+  toParty       String
+  toPartyType   PartyType
+  fromAccountId String
+  toAccountId   String
+  hcsMessageId  String?
+  hcsTopicId    String
+  kmsSignature  String?
+  temperature   Float?
+  location      String?
+  timestamp     DateTime  @default(now())
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  batchId     String
+  batch       Batch     @relation(fields: [batchId], references: [id])
+  alertType   AlertType
+  severity    Severity
+  description String
+  aiAnalysis  String?
+  resolved    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+enum BatchStatus {
+  MANUFACTURED
+  DISTRIBUTED
+  IN_TRANSIT
+  AT_PHARMACY
+  DISPENSED
+  RECALLED
+  FLAGGED
+}
+
+enum PartyType {
+  MANUFACTURER
+  DISTRIBUTOR
+  PHARMACY
+  HOSPITAL
+  REGULATOR
+}
+
+enum AlertType {
+  CHAIN_BREAK
+  TEMPERATURE_EXCURSION
+  EXPIRY_RISK
+  COUNTERFEIT_SUSPECTED
+  RECALL
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
