@@ -48,9 +48,10 @@ async function getVerification(batchId: string): Promise<VerificationData | null
 export default async function VerifyPage({
   params,
 }: {
-  params: { batchId: string };
+  params: Promise<{ batchId: string }>;
 }) {
-  const data = await getVerification(params.batchId);
+  const { batchId } = await params;
+  const data = await getVerification(batchId);
 
   if (!data) {
     return (
